@@ -31,3 +31,18 @@ test('muted or unsupported audio does not create a context',async()=>{
  const {sound,instances}=setup();sound.setEnabled(false);await sound.unlock();assert.equal(instances.length,0);
  sound.enabled=true;sound.supported=false;await sound.unlock();assert.equal(instances.length,0);
 });
+test('Korean announcer voice respects mute and is canceled on pause',()=>{
+ const {sound,root}=setup();const spoken=[];let canceled=0;
+ root.SpeechSynthesisUtterance=class{constructor(text){this.text=text;}};
+ root.speechSynthesis={getVoices:()=>[{lang:'ko-KR',localService:true}],speak:u=>spoken.push(u),cancel:()=>canceled++};
+ sound.speak('청 코너! 동굴바리!');assert.equal(spoken.length,1);assert.equal(spoken[0].lang,'ko-KR');
+ sound.setPaused(true);assert.equal(canceled,1);assert.equal(sound.utterance,null);
+ sound.speak('홍 코너!');assert.equal(spoken.length,1);
+ sound.setPaused(false);sound.speak('두 선수 준비!');sound.setEnabled(false);
+ assert.equal(canceled,2);sound.speak('시작!');assert.equal(spoken.length,2);
+});
+test('without Korean speech support introductions use text and effects safely',()=>{
+ const {sound,root}=setup();sound.speak('청 코너');
+ root.SpeechSynthesisUtterance=class{};root.speechSynthesis={getVoices:()=>[{lang:'en-US'}],speak(){throw Error('wrong voice');}};
+ sound.speak('동굴바리');assert.equal(sound.utterance,null);
+});

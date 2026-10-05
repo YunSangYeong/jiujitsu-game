@@ -3,6 +3,7 @@ const { Match, ACTIONS, OPPONENTS, POSITIONS } = JiuJitsu;
 const $ = id => document.getElementById(id);
 const canvas = $('mat'), ctx = canvas.getContext('2d');
 let match = new Match(), phase = 'intro', paused = false, lastFrame = 0, animation = null, seenAction = 0;
+let introduction = null;
 const sound = new JiuJitsuSound();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const buttons = ACTIONS.map((action, index) => {
@@ -16,7 +17,38 @@ function play(id) {
   sound.unlock().then(updateSoundButton);
   if (match.act(0, id)) { observeAction(); render(); finishIfNeeded(); }
 }
+function introduceRound(round) {
+  sound.stop();sound.setPaused(false);
+  const audioWasReady=sound.context?.state==='running';
+  sound.unlock().then(()=>{updateSoundButton();if(!audioWasReady&&phase==='introducing'&&introduction?.stage===0)sound.play('announce');});
+  animation=null;seenAction=0;match=new Match(round);paused=false;
+  phase='introducing';introduction={elapsed:0,stage:-1};lastFrame=performance.now();
+  $('overlay').hidden=true;$('introductions').hidden=false;
+  showIntroductionStage(0);render();$('skip-intro').focus({preventScroll:true});
+}
+function showIntroductionStage(stage) {
+  introduction.stage=stage;
+  const round=['예선','준결승','결승'][match.round];
+  const cards=[
+    ['BLUE CORNER · '+round,'동굴바리','챔피언을 꿈꾸는 동굴 도장 수련생','청 코너! 동굴바리 선수를 소개합니다!','청 코너! 동굴바리!'],
+    ['RED CORNER · '+round,OPPONENTS[match.round].name,OPPONENTS[match.round].style,'홍 코너! '+OPPONENTS[match.round].name+' 선수를 소개합니다!','홍 코너! '+OPPONENTS[match.round].name+'!'],
+    ['LET’S GET READY · '+round,'두 선수, 준비!','서브미션 또는 점수로 승리하세요','매트 중앙으로! 곧 경기가 시작됩니다.','두 선수, 준비!']
+  ];
+  const [corner,name,style,call,speech]=cards[stage];
+  $('introductions').dataset.stage=stage;$('intro-corner').textContent=corner;$('intro-name').textContent=name;
+  $('intro-style').textContent=style;$('intro-call').textContent=call;
+  document.querySelectorAll('.intro-steps i').forEach((el,i)=>el.classList.toggle('active',i===stage));
+  sound.stop();sound.play(stage===2?'recover':'announce');sound.speak(speech);
+  match.say(call);render();
+}
+function finishIntroduction(){
+  if(phase!=='introducing'||paused)return;
+  const round=match.round;introduction=null;$('introductions').hidden=true;sound.stopSpeech();
+  startRound(round);$('pause').focus({preventScroll:true});
+}
+$('skip-intro').addEventListener('click',finishIntroduction);
 function startRound(round) {
+  introduction=null;$('introductions').hidden=true;
   sound.stop(); sound.setPaused(false); sound.unlock().then(()=>{updateSoundButton();sound.play('bell');});
   animation = null; seenAction = 0;
   match = new Match(round); phase = 'playing'; paused = false; lastFrame = performance.now();
@@ -48,15 +80,15 @@ function finishIfNeeded() {
   render(); $('primary').focus({ preventScroll: true });
 }
 $('primary').addEventListener('click', () => {
-  if (phase === 'intro') startRound(0);
+  if (phase === 'intro') introduceRound(0);
   else if (phase === 'result') {
     const round = match.result.winner === null ? match.round :
       (match.result.winner === 0 && match.round < 2 ? match.round + 1 : 0);
-    startRound(round);
+    introduceRound(round);
   }
 });
 function togglePause(force) {
-  if (phase !== 'playing') return;
+  if (!['playing','introducing'].includes(phase)) return;
   paused = typeof force === 'boolean' ? force : !paused;
   lastFrame = performance.now();
   sound.setPaused(paused);
@@ -65,7 +97,7 @@ function togglePause(force) {
   else $('overlay').hidden = true;
   render();
 }
-$('primary').addEventListener('click', () => { if (phase === 'playing' && paused) togglePause(false); });
+$('primary').addEventListener('click', () => { if (['playing','introducing'].includes(phase) && paused) togglePause(false); });
 function updateSoundButton(){
   const button=$('sound-toggle');
   button.disabled=!sound.supported;
@@ -95,12 +127,13 @@ updateSoundButton();
 $('pause').addEventListener('click', () => togglePause());
 $('help-toggle').addEventListener('click', () => {
   $('help').hidden = !$('help').hidden; $('help-toggle').setAttribute('aria-expanded', String(!$('help').hidden));
-  if (!$('help').hidden && phase === 'playing') togglePause(true);
+  if (!$('help').hidden && ['playing','introducing'].includes(phase)) togglePause(true);
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); });
 document.addEventListener('keydown', event => {
   if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
   if (event.key.toLowerCase() === 'p') { event.preventDefault(); togglePause(); }
+  if (phase === 'introducing' && !paused && ['Enter','Escape'].includes(event.key) && document.activeElement.tagName!=='BUTTON') {event.preventDefault();finishIntroduction();}
   const index = Number(event.key) - 1;
   if (index >= 0 && index < ACTIONS.length) { event.preventDefault(); play(ACTIONS[index].id); }
   if (event.key === 'Enter' && !['BUTTON', 'INPUT'].includes(document.activeElement.tagName) && !$('overlay').hidden) {
@@ -114,14 +147,14 @@ function render() {
   $('player-energy').textContent = Math.floor(p.stamina); $('ai-energy').textContent = Math.floor(a.stamina);
   $('opponent-name').textContent = a.name;
   const time = Math.ceil(match.time); $('time').textContent = `${String(Math.floor(time / 60)).padStart(2, '0')}:${String(time % 60).padStart(2, '0')}`;
-  $('pause').disabled = phase !== 'playing'; $('pause').textContent = paused ? '계속하기' : '일시정지';
-  $('live-label').textContent = phase === 'playing' ? (paused ? 'PAUSED' : '● LIVE') : (phase === 'result' ? 'FINISHED' : 'READY');
+  $('pause').disabled = !['playing','introducing'].includes(phase); $('pause').textContent = paused ? '계속하기' : '일시정지';
+  $('live-label').textContent = paused ? 'PAUSED' : phase === 'playing' ? (paused ? 'PAUSED' : '● LIVE') : (phase === 'result' ? 'FINISHED' : phase === 'introducing' ? 'PLAYER INTRO' : 'READY');
   document.querySelectorAll('[data-round]').forEach((el, i) => {
     el.classList.toggle('active', i === match.round); el.classList.toggle('complete', i < match.round || (phase === 'result' && match.result.winner === 0 && i === match.round));
   });
   $('position').textContent = POSITIONS[match.position] + (match.top === null ? '' : match.top === 0 ? ' · 동굴바리 상위' : ' · 동굴바리 하위');
   const hints = { standing: '테이크다운으로 2점을 노리세요', guard: match.top === 0 ? '가드를 패스하면 3점!' : '스윕으로 뒤집거나 탈출하세요', side: match.top === 0 ? '마운트 또는 백으로 이동하세요' : '탈출하면 가드로 돌아갑니다', mount: match.top === 0 ? '암바로 서브미션을 노리세요' : '방어하고 탈출하세요!', back: match.top === 0 ? '초크로 경기를 끝내세요' : '위험! 방어하거나 탈출하세요' };
-  $('position-hint').textContent = hints[match.position];
+  $('position-hint').textContent = phase === 'introducing' ? '선수 소개 중 · 경기 시간은 아직 흐르지 않습니다' : hints[match.position];
   $('action-hint').textContent = paused ? '일시정지 중' : match.cooldown > 0 && phase === 'playing' ? '다음 동작 준비 중…' : '1~8 키 또는 버튼으로 조작';
   buttons.forEach((button, index) => {
     const action = ACTIONS[index], legal = match.available(0, action.id);
@@ -272,8 +305,35 @@ function draw(now) {
   ctx.strokeStyle='#c9ddb37a';ctx.lineWidth=3;ctx.strokeRect(225,159,510,171);
   ctx.fillStyle='#cee0ce18';ctx.font='bold 25px sans-serif';ctx.textAlign='center';ctx.fillText('DONGGUL DOJO',480,307);
   ctx.fillStyle='#101e2640';ctx.beginPath();ctx.ellipse(480,278,155,25,0,0,Math.PI*2);ctx.fill();
-  drawFighters(now);
+  if (phase === 'introducing') drawIntroduction(); else drawFighters(now);
   ctx.fillStyle='#dfede3';ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('BLUE · 동굴바리',26,351);ctx.textAlign='right';ctx.fillText('CORAL · '+match.fighters[1].name,934,351);
+}
+function drawIntroduction(){
+  const stage=introduction.stage;
+  const local=introduction.elapsed-(stage===0?0:stage===1?3:6);
+  const entry=reducedMotion.matches?1:Math.min(1,local/.65);
+  const ease=1-Math.pow(1-entry,3);
+  ctx.save();ctx.fillStyle='#081523aa';ctx.fillRect(0,0,960,390);
+  const target=stage===0?345:stage===1?615:480;
+  const glow=ctx.createRadialGradient(target,205,12,target,205,230);
+  glow.addColorStop(0,stage===1?'#f18b7966':'#83c9ef66');glow.addColorStop(1,'#ffffff00');
+  ctx.fillStyle=glow;ctx.fillRect(0,0,960,390);
+  ctx.fillStyle='#e7f3ff18';ctx.beginPath();ctx.moveTo(target-30,0);ctx.lineTo(target+30,0);ctx.lineTo(target+150,275);ctx.lineTo(target-150,275);ctx.closePath();ctx.fill();
+  const poses=JiuJitsuGraphics.positions({position:'standing'});
+  poses[0].x=stage===0? -60+405*ease:345;
+  poses[1].x=stage===0?1140:stage===1?1140-525*ease:615;
+  poses.forEach((p,i)=>{
+    p.y=126;
+    if(i===stage&&!reducedMotion.matches){
+      // Acknowledgment: hand raises toward the audience, then settles.
+      const wave=Math.sin(Math.min(1,Math.max(0,local-.5)/1.6)*Math.PI);
+      p.limbs[1]=[32,12-40*wave,47,-3-60*wave];p.angle=(i===0?1:-1)*.08;
+    }
+    ctx.save();ctx.translate(p.x,p.y);ctx.scale(1.3,1.3);ctx.translate(-p.x,-p.y);
+    figure(p,i===0?'#6ab6e6':'#ec8f79');ctx.restore();
+  });
+  ctx.fillStyle='#b9c9d4';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('장내 아나운서 · 선수 소개',480,46);
+  ctx.restore();
 }
 function advanceAnimation(seconds) {
   if (!animation) return;
@@ -294,6 +354,12 @@ let renderElapsed = 0;
 function frame(now) {
   const elapsed = Math.min((now - (lastFrame || now)) / 1000, .1);
   lastFrame = now;
+  if(phase==='introducing'&&!paused){
+    introduction.elapsed+=elapsed;
+    const next=introduction.elapsed<3?0:introduction.elapsed<6?1:2;
+    if(next!==introduction.stage)showIntroductionStage(next);
+    if(introduction.elapsed>=7.4)finishIntroduction();
+  }
   if (phase === 'playing' && !paused) {
     match.tick(elapsed);
     observeAction();

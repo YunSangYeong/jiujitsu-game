@@ -3,6 +3,7 @@
   'use strict';
   class Sound {
     constructor(){
+      this.utterance=null;
       this.context=null;this.master=null;this.voices=new Set();this.paused=false;
       this.lastError=null;
       this.supported=Boolean(root.AudioContext||root.webkitAudioContext);this.enabled=true;
@@ -35,7 +36,21 @@
       if(!enabled)this.stop();
     }
     setPaused(paused){this.paused=paused;if(paused)this.stop();}
+    speak(text){
+      if(!this.enabled||this.paused||!root.speechSynthesis||!root.SpeechSynthesisUtterance)return;
+      const voices=root.speechSynthesis.getVoices();
+      const voice=voices.find(v=>v.lang.startsWith('ko')&&v.localService)||voices.find(v=>v.lang.startsWith('ko'));
+      if(!voice)return; // Text and fanfare still introduce the fighters without a Korean voice.
+      this.stopSpeech();
+      const utterance=new root.SpeechSynthesisUtterance(text);
+      utterance.lang='ko-KR';utterance.voice=voice;utterance.rate=1.12;utterance.volume=.85;
+      this.utterance=utterance;
+      utterance.onend=()=>{if(this.utterance===utterance)this.utterance=null;};
+      root.speechSynthesis.speak(utterance);
+    }
+    stopSpeech(){if(this.utterance){root.speechSynthesis.cancel();this.utterance=null;}}
     stop(){
+      this.stopSpeech();
       for(const voice of this.voices){try{voice.stop();}catch(_){}voice.disconnect();}
       this.voices.clear();
     }
@@ -59,6 +74,7 @@
     play(name,preview=false){
       if(!this.enabled||!this.supported||(this.paused&&!preview)||!this.context||this.context.state!=='running')return;
       switch(name){
+        case 'announce': this.tone(196,.2,0,'triangle',.25);this.tone(294,.24,.14,'triangle',.25);this.noise(.7,.1,.08,1200);break;
         case 'bell': this.tone(880,.5,0,'sine',.4);this.tone(1320,.55,0,'sine',.16);break;
         case 'move': this.noise(.18,0,.16,1300);break;
         case 'mat': this.tone(115,.22,0,'sine',.6,42);this.noise(.14,0,.35,500);break;

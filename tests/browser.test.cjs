@@ -23,6 +23,19 @@ await page.goto(base);
 await page.screenshot({path:'/tmp/jiujitsu-desktop.png',fullPage:true});
 assert.equal(await page.evaluate(()=>sound.context),null,'no autoplay before interaction');
 await page.getByRole('button',{name:'START'}).click();
+assert.equal(await page.evaluate(()=>phase),'introducing');
+assert.equal(await page.locator('#intro-name').textContent(),'동굴바리');
+assert.equal(await page.locator('[data-action=takedown]').isDisabled(),true);
+await page.waitForTimeout(3350);
+assert.equal(await page.locator('#intro-name').textContent(),'돌주먹 민수');
+assert.equal(await page.evaluate(()=>match.time),75);assert.equal(await page.evaluate(()=>match.position),'standing');
+await page.keyboard.press('p');const introElapsed=await page.evaluate(()=>introduction.elapsed);
+await page.waitForTimeout(250);assert.equal(await page.evaluate(()=>introduction.elapsed),introElapsed);
+await page.getByRole('button',{name:'경기 계속하기'}).click();
+await page.locator('#mat').screenshot({path:'/tmp/jiujitsu-player-introduction.png'});
+await page.waitForFunction(()=>phase==='playing');
+assert.equal(await page.locator('#introductions').isVisible(),false);
+
 await page.waitForFunction(()=>sound.context?.state==='running');
 assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'true');
 await page.locator('#sound-toggle').click();assert.equal(await page.evaluate(()=>sound.enabled),false);
@@ -43,21 +56,24 @@ await page.locator(`[data-action=${id}]`).click();
 if(id!=='submit')await page.waitForTimeout(1050);
 }
 assert.equal(await page.evaluate(()=>match.result.winner),0);
-if(round<2)await page.getByRole('button',{name:'다음 경기'}).click();
+if(round<2){await page.getByRole('button',{name:'다음 경기'}).click();assert.equal(await page.evaluate(()=>phase),'introducing');await page.locator('#skip-intro').click();}
 }
 await page.waitForFunction(()=>phase==='result');
 assert.equal(await page.locator('#overlay-title').textContent(),'동굴바리 챔피언!');
 assert.equal(await page.locator('#trophy').isVisible(),true);
 await page.screenshot({path:'/tmp/jiujitsu-champion.png',fullPage:true});
 await page.getByRole('button',{name:'처음부터 다시 플레이'}).click();
+await page.locator('#skip-intro').click();
 assert.equal(await page.evaluate(()=>match.round),0);
 await page.evaluate(()=>{match.fighters[1].score=3;match.time=.01;});
 await page.waitForTimeout(200);
 assert.equal(await page.locator('#overlay-title').textContent(),'도전은 계속된다.');
 await page.getByRole('button',{name:'처음부터 다시 도전'}).click();
+await page.locator('#skip-intro').click();
 await page.evaluate(()=>{match.time=.01;});await page.waitForTimeout(200);
 assert.equal(await page.locator('#overlay-title').textContent(),'팽팽한 승부!');
 await page.getByRole('button',{name:'같은 경기 다시 도전'}).click();
+await page.locator('#skip-intro').click();
 await page.getByRole('button',{name:'도움말',exact:true}).click();
 assert.equal(await page.evaluate(()=>paused),true);
 await page.getByRole('button',{name:'경기 계속하기'}).click();
@@ -68,6 +84,10 @@ const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:tru
 mobile.on('pageerror',e=>errors.push(e.message));
 await mobile.goto(base);
 await mobile.getByRole('button',{name:'START'}).tap();
+assert.equal(await mobile.evaluate(()=>phase),'introducing');
+await mobile.screenshot({path:'/tmp/jiujitsu-intro-mobile.png',fullPage:true});
+await mobile.locator('#skip-intro').tap();
+assert.equal(await mobile.evaluate(()=>phase),'playing');
 await mobile.waitForFunction(()=>sound.context?.state==='running');
 await mobile.locator('#sound-toggle').tap();
 assert.equal(await mobile.evaluate(()=>sound.enabled),false);
@@ -135,7 +155,7 @@ await mobile.screenshot({path:'/tmp/jiujitsu-depth-mobile.png',fullPage:true});
 // Offline render verifies every effect produces audible samples, without speakers in CI.
 const audioResults=await page.evaluate(async()=>{
   const out=[];
-  for(const name of ['bell','move','mat','position','block','recover','lock','tap','win','champion','loss','draw']){
+  for(const name of ['announce','bell','move','mat','position','block','recover','lock','tap','win','champion','loss','draw']){
     const fx=new JiuJitsuSound();fx.enabled=true;fx.context=new OfflineAudioContext(1,96000,48000);
     fx.master=fx.context.createGain();fx.master.gain.value=.24;fx.master.connect(fx.context.destination);
     // Offline context starts suspended; temporarily allow recipe scheduling only.
@@ -151,6 +171,6 @@ await page.locator('#sound-toggle').click();
 await page.reload();assert.equal(await page.evaluate(()=>sound.enabled),false,'mute persists');
 assert.equal(await page.evaluate(()=>sound.context),null,'muted reload does not create audio context');
 assert.deepEqual(errors,[]);
-console.log('PASS: desktop tournament, armbar/choke, trophy, restart, loss, draw, pause, help, keyboard, mobile taps, 320–1280px layout; all technique success/defense/AI animations, paused tap-out, mobile choke and reduced motion; desktop/mobile audio unlock, mute persistence, pause silence, 12 non-silent sound recipes; no browser errors.');
+console.log('PASS: desktop tournament, armbar/choke, trophy, restart, loss, draw, pause, help, keyboard, mobile taps, 320–1280px layout; all technique success/defense/AI animations, paused tap-out, mobile choke and reduced motion; desktop/mobile audio unlock, mute persistence, pause silence, 13 non-silent sound recipes, sequential fighter introductions, paused intro, mobile skip; no browser errors.');
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(e=>{console.error(e);server.close();process.exit(1);});

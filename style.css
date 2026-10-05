@@ -3,3 +3,17 @@
 .brand-tools{display:flex;gap:7px;margin-left:auto}.brand-tools .icon-button{margin-left:0;min-height:40px}#sound-toggle[aria-pressed="true"]{color:var(--lime);border-color:#647b43}@media(max-width:600px){.brand{flex-wrap:wrap}.brand-tools{margin-left:46px;flex-basis:calc(100% - 46px);justify-content:flex-end;margin-top:-2px}.brand-tools .icon-button{min-height:44px;padding:9px 12px}}
 
 #sound-toggle{width:106px;flex-shrink:0;touch-action:manipulation}.brand-tools{position:relative;z-index:2}@media(max-width:600px){.brand-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-left:0;flex-basis:100%}.brand-tools .icon-button{width:100%;min-width:0;min-height:46px;padding:8px 3px;touch-action:manipulation}}
+
+.introductions{position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,#07121ee8 0%,transparent 62%);z-index:1}
+#skip-intro{position:absolute;right:14px;top:48px;pointer-events:auto;min-height:44px;background:#101d2ae6;color:var(--text);border-color:#718490}
+.intro-card{position:absolute;bottom:14px;left:14px;right:14px;text-align:center;padding:12px;border-top:1px solid #64b5eb88;background:#102332ec;border-radius:7px}
+.intro-card h2{font-size:28px;margin:4px 0;color:var(--blue);letter-spacing:-1px}
+.intro-card p{margin:4px 0;font-size:12px;color:#d5e1e6}
+.intro-card #intro-corner{font-size:10px;color:var(--blue);letter-spacing:2px}
+.intro-card #intro-call{font-size:14px;color:var(--lime);margin-top:8px}
+.introductions[data-stage="1"] .intro-card{border-color:#f18b7988}.introductions[data-stage="1"] h2,.introductions[data-stage="1"] #intro-corner{color:var(--red)}
+.introductions[data-stage="2"] h2{color:var(--lime)}
+.intro-steps{display:flex;justify-content:center;gap:6px;margin-top:10px}.intro-steps i{height:3px;width:30px;background:#40535d}.intro-steps i.active{background:var(--lime)}
+@media(max-width:600px){#skip-intro{top:34px;right:8px;font-size:10px}.intro-card{bottom:6px;left:7px;right:7px;padding:7px}.intro-card h2{font-size:21px}.intro-card p{font-size:10px}.intro-card #intro-call{font-size:11px;margin-top:4px}.intro-card #intro-corner{font-size:8px}.intro-steps{margin-top:6px}}
+
+.overlay{z-index:3}

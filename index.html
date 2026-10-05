@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#121f25">
   <title>동굴바리 주짓수 토너먼트</title>
-  <link rel="stylesheet" href="style.css?v=gi-depth-3">
-  <script defer src="engine.js?v=gi-depth-3"></script>
-  <script defer src="graphics.js?v=gi-depth-3"></script>
-  <script defer src="audio.js?v=gi-depth-3"></script>
-  <script defer src="game.js?v=gi-depth-3"></script>
+  <link rel="stylesheet" href="style.css?v=announcer-4">
+  <script defer src="engine.js?v=announcer-4"></script>
+  <script defer src="graphics.js?v=announcer-4"></script>
+  <script defer src="audio.js?v=announcer-4"></script>
+  <script defer src="game.js?v=announcer-4"></script>
 </head>
 <body>
 <main class="game-shell">
@@ -25,6 +25,16 @@
     <div class="arena-top"><span>동굴 도장 · TOURNAMENT MAT 01</span><span class="live" id="live-label">READY</span></div>
     <canvas id="mat" width="960" height="390" aria-label="동굴바리와 상대의 현재 포지션을 보여주는 2D 경기장"></canvas>
     <div class="position-tag"><span>현재 포지션</span><strong id="position">스탠딩</strong><span id="position-hint">테이크다운으로 경기를 시작하세요</span></div>
+    <section id="introductions" class="introductions" hidden aria-label="선수 소개">
+      <button id="skip-intro" class="small-button">소개 건너뛰기 →</button>
+      <div class="intro-card" aria-live="polite" aria-atomic="true">
+        <p id="intro-corner" class="eyebrow">BLUE CORNER</p>
+        <h2 id="intro-name">동굴바리</h2>
+        <p id="intro-style">챔피언을 꿈꾸는 동굴 도장 수련생</p>
+        <p id="intro-call">청 코너! 동굴바리 선수를 소개합니다!</p>
+        <div class="intro-steps" aria-hidden="true"><i></i><i></i><i></i></div>
+      </div>
+    </section>
     <div id="overlay" class="overlay"><div class="overlay-card"><p id="overlay-kicker" class="eyebrow">THE ROAD TO CHAMPION</p><div id="trophy" hidden aria-hidden="true">🏆</div><h2 id="overlay-title">작은 도장, 큰 도전.</h2><p id="overlay-copy">예선부터 결승까지 AI 선수들을 꺾고<br>주짓수 챔피언이 되어라!</p><button id="primary" class="primary">START <span>→</span></button><p id="overlay-note">설치 없이 바로 플레이 · 키보드 & 터치</p></div></div>
   </section>
   <section class="controls" aria-label="기술 선택"><div class="controls-heading"><h2>다음 한 수</h2><span id="action-hint">포지션에 맞는 기술을 선택하세요</span></div><div id="actions" class="actions"></div></section>
