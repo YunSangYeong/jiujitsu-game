@@ -22,6 +22,7 @@
       this.round = round; this.random = random; this.position = 'standing'; this.top = null;
       this.fighters = [{ name: '동굴바리', stamina: 100, score: 0, defending: false },
         { name: OPPONENTS[round].name, stamina: 100, score: 0, defending: false }];
+      this.actionSerial = 0; this.lastAction = null;
       this.time = 75; this.result = null; this.messages = []; this.cooldown = 0;
       this.aiClock = OPPONENTS[round].interval; this.awarded = new Set();
     }
@@ -52,15 +53,21 @@
       if (!action || !this.available(actor, id) || (actor === 0 && this.cooldown > 0)) return false;
       const me = this.fighters[actor], other = this.fighters[1 - actor];
       if (me.stamina < action.cost) return false;
+      const before = { position: this.position, top: this.top };
+      const finishAction = (success, technique) => {
+        this.lastAction = { serial: ++this.actionSerial, actor, id, success, technique, before,
+          after: { position: this.position, top: this.top } };
+        return true;
+      };
       if (actor === 0) this.cooldown = .9;
       if (id === 'defend') {
         me.stamina = Math.min(100, me.stamina + 18); me.defending = true;
-        this.say(`${me.name} 방어 자세! 스태미나 회복`); return true;
+        this.say(`${me.name} 방어 자세! 스태미나 회복`); return finishAction(true, action.name);
       }
       const success = this.random() < this.chance(actor, action);
       me.stamina -= action.cost; me.defending = false; other.defending = false;
       const technique = id === 'submit' ? (this.position === 'back' ? '초크' : '암바') : action.name;
-      if (!success) { this.say(`${me.name} ${technique} 시도! ${other.name} 방어 성공`); return true; }
+      if (!success) { this.say(`${me.name} ${technique} 시도! ${other.name} 방어 성공`); return finishAction(false, technique); }
       if (id === 'takedown') {
         this.top = actor; this.position = 'guard'; this.awarded.clear(); this.award(actor, 'takedown', 2);
       } else if (id === 'pass') { this.position = 'side'; this.award(actor, 'pass', 3);
@@ -73,9 +80,9 @@
         else this.position = 'side';
       } else if (id === 'submit') {
         this.result = { winner: actor, method: 'submission', technique };
-        this.say(`${me.name} ${technique} 성공! SUBMISSION!`); return true;
+        this.say(`${me.name} ${technique} 성공! SUBMISSION!`); return finishAction(true, technique);
       }
-      this.say(`${me.name} ${technique} 성공!`); return true;
+      this.say(`${me.name} ${technique} 성공!`); return finishAction(true, technique);
     }
     chooseAI() {
       const me = this.fighters[1], other = this.fighters[0];
