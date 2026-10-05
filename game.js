@@ -70,14 +70,14 @@ function updateSoundButton(){
   const button=$('sound-toggle');
   button.disabled=!sound.supported;
   const ready=sound.context?.state==='running';
-  button.textContent=!sound.supported?'소리 미지원':!sound.enabled?'소리 꺼짐':sound.lastError?'소리 재시도':ready?'소리 켜짐':'소리 시작';
+  button.textContent=!sound.supported?'소리 미지원':sound.enabled?'소리 켜짐':'소리 꺼짐';
+  button.title=sound.lastError?'오디오 활성화 실패: 소리 테스트를 눌러 재시도':!ready&&sound.enabled?'소리 테스트 또는 START를 눌러 활성화':'효과음 켜기 / 끄기';
   $('sound-test').disabled=!sound.supported;
   button.setAttribute('aria-pressed',String(sound.enabled&&sound.supported));
   button.setAttribute('aria-label',sound.enabled?'효과음 켜짐. 눌러 끄기':'효과음 꺼짐. 눌러 켜기');
 }
 $('sound-toggle').addEventListener('click',()=>{
-  const retry=sound.enabled&&(!sound.context||sound.context.state!=='running'||sound.lastError);
-  sound.setEnabled(retry?true:!sound.enabled);updateSoundButton();
+  sound.setEnabled(!sound.enabled);updateSoundButton();
   if(sound.enabled)sound.unlock().then(()=>{updateSoundButton();sound.play('recover');});
 });
 $('sound-test').addEventListener('click',()=>{
@@ -89,8 +89,8 @@ $('sound-test').addEventListener('click',()=>{
       '소리가 아직 활성화되지 않았습니다. 소리 테스트를 다시 누르거나 기본 브라우저에서 열어주세요.';
   });
 });
-// Unlock within a real touch release, before click handlers or deferred callbacks.
-document.addEventListener('pointerup',()=>{if(sound.enabled)sound.unlock().then(updateSoundButton);},{capture:true});
+// Each button unlocks audio inside its own click gesture. The toggle always toggles,
+// even if audio permission is pending; the separate test button handles retries.
 updateSoundButton();
 $('pause').addEventListener('click', () => togglePause());
 $('help-toggle').addEventListener('click', () => {
@@ -146,25 +146,62 @@ function observeAction() {
   sound.play(event.id === 'defend' ? 'recover' : event.id === 'submit' ? 'lock' : 'move');
   animation = { event, frames, elapsed: 0, impactPlayed: false, duration: event.id === 'submit' ? 1.25 : .82 };
 }
+// 2.5D gi: cylindrical limbs, rounded face, fabric volume and layered contact shadows.
 function figure(pose, color, highlight = false) {
-  const { x,y,angle,facing,limbs } = pose;
-  ctx.save(); ctx.translate(x,y);ctx.rotate(angle);ctx.scale(facing,1);
+  const {x,y,angle,facing,limbs}=pose;
+  const palette=color==='#6ab6e6'?
+    {light:'#b9e8ff',mid:'#64b0df',dark:'#245780',deep:'#163d60'}:
+    {light:'#ffd6b6',mid:'#e9947e',dark:'#984f49',deep:'#643438'};
+  ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.scale(facing,1);
   ctx.lineCap='round';ctx.lineJoin='round';
-  if(highlight){ctx.shadowColor='#d4f779';ctx.shadowBlur=6;}
-  // Legs behind gi torso, arms in front, to make grips and submissions readable.
-  function limb(i) {
-    const [a,b,c,d]=limbs[i];
-    ctx.strokeStyle='#182a32';ctx.lineWidth=19;ctx.beginPath();ctx.moveTo(i<2?(i===0?-17:17):(i===2?-11:11),i<2?8:49);ctx.lineTo(a,b);ctx.lineTo(c,d);ctx.stroke();
-    ctx.strokeStyle=color;ctx.lineWidth=13;ctx.stroke();
-    ctx.fillStyle='#e5b18f';ctx.beginPath();ctx.arc(c,d,6,0,Math.PI*2);ctx.fill();
+  function capsule(x1,y1,x2,y2,r,p=palette) {
+    const dx=x2-x1,dy=y2-y1,length=Math.hypot(dx,dy)||1;
+    const nx=-dy/length*r,ny=dx/length*r;
+    const gradient=ctx.createLinearGradient(x1+nx,y1+ny,x1-nx,y1-ny);
+    gradient.addColorStop(0,p.dark);gradient.addColorStop(.32,p.mid);
+    gradient.addColorStop(.63,p.light);gradient.addColorStop(1,p.mid);
+    ctx.strokeStyle=p.deep;ctx.lineWidth=r*2+2;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+    ctx.strokeStyle=gradient;ctx.lineWidth=r*2;ctx.stroke();
   }
+  function sphere(x,y,r){
+    const gradient=ctx.createRadialGradient(x-r*.35,y-r*.4,r*.1,x,y,r);
+    gradient.addColorStop(0,'#ffe3bb');gradient.addColorStop(.55,'#e8b28e');gradient.addColorStop(1,'#a76e59');
+    ctx.fillStyle=gradient;ctx.strokeStyle='#704b40';ctx.lineWidth=1;
+    ctx.beginPath();ctx.ellipse(x,y,r,r*.94,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+  }
+  function limb(i){
+    const [a,b,c,d]=limbs[i];const sx=i<2?(i===0?-18:18):(i===2?-11:11),sy=i<2?10:47;
+    capsule(sx,sy,a,b,i<2?8:9);capsule(a,b,c,d,i<2?7:8);
+    // Fold and cuff distinguish sleeve/pants from the exposed hand/foot.
+    ctx.strokeStyle=palette.dark;ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(a-4,b-2);ctx.lineTo(a+3,b+2);ctx.stroke();
+    sphere(c,d,i<2?6:6.5);
+  }
+  // Contact shadow under the upper body makes overlapping players distinct.
+  ctx.save();ctx.translate(5,6);ctx.fillStyle='#08151d50';ctx.beginPath();ctx.ellipse(0,29,27,37,0,0,Math.PI*2);ctx.fill();ctx.restore();
   limb(2);limb(3);
-  ctx.fillStyle=color;ctx.strokeStyle='#182a32';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(-22,0,44,55,7);ctx.fill();ctx.stroke();
-  ctx.strokeStyle='#ecf3ef';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-13,1);ctx.lineTo(6,32);ctx.moveTo(13,1);ctx.lineTo(-6,32);ctx.stroke();
-  ctx.fillStyle='#17232b';ctx.fillRect(-23,39,46,7);ctx.fillRect(8,42,6,19);
-  ctx.fillStyle='#e5b18f';ctx.strokeStyle='#182a32';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,-21,18,0,Math.PI*2);ctx.fill();ctx.stroke();
-  ctx.fillStyle='#182329';ctx.beginPath();ctx.arc(0,-26,17,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(5,-22,3,3);
-  limb(0);limb(1);ctx.restore();
+  const gi=ctx.createLinearGradient(-24,0,23,42);
+  gi.addColorStop(0,palette.light);gi.addColorStop(.35,palette.mid);gi.addColorStop(.78,palette.mid);gi.addColorStop(1,palette.dark);
+  ctx.fillStyle=gi;ctx.strokeStyle=palette.deep;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(-15,-1);ctx.quadraticCurveTo(-27,4,-23,22);ctx.lineTo(-18,55);ctx.quadraticCurveTo(0,61,18,55);ctx.lineTo(23,22);ctx.quadraticCurveTo(27,4,15,-1);ctx.closePath();ctx.fill();ctx.stroke();
+  // Raised lapels cast a narrow shadow on the jacket.
+  ctx.strokeStyle=palette.dark;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(-12,3);ctx.lineTo(7,34);ctx.moveTo(12,3);ctx.lineTo(-5,31);ctx.stroke();
+  ctx.strokeStyle='#edf5e9';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-13,1);ctx.lineTo(5,32);ctx.moveTo(11,1);ctx.lineTo(-7,29);ctx.stroke();
+  ctx.strokeStyle=palette.dark;ctx.lineWidth=1.3;
+  for(const [x1,y1,x2,y2]of [[-18,22,-10,26],[-17,31,-8,33],[12,26,18,21],[9,35,18,32]]){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+  const belt=ctx.createLinearGradient(0,39,0,48);belt.addColorStop(0,'#56606a');belt.addColorStop(.4,'#17212e');belt.addColorStop(1,'#080e19');
+  ctx.fillStyle=belt;ctx.beginPath();ctx.roundRect(-23,39,46,9,3);ctx.fill();
+  ctx.fillStyle='#111b28';ctx.beginPath();ctx.roundRect(2,41,9,22,2);ctx.fill();ctx.fillStyle='#596777';ctx.fillRect(4,43,2,15);
+  ctx.fillStyle='#152333';ctx.beginPath();ctx.ellipse(4,44,7,5,0,0,Math.PI*2);ctx.fill();
+  capsule(0,-2,0,-10,7,{light:'#f3c6a0',mid:'#dfab8a',dark:'#af795f',deep:'#875f4a'});
+  sphere(0,-23,19);
+  // Hair has a shaded side, curved silhouette and subtle shine.
+  const hair=ctx.createLinearGradient(-18,-35,18,-15);hair.addColorStop(0,'#54606b');hair.addColorStop(.4,'#24323e');hair.addColorStop(1,'#101a25');
+  ctx.fillStyle=hair;ctx.beginPath();ctx.moveTo(-18,-22);ctx.bezierCurveTo(-25,-48,21,-49,18,-21);ctx.lineTo(13,-27);ctx.quadraticCurveTo(-3,-32,-15,-26);ctx.closePath();ctx.fill();
+  sphere(17,-22,4);ctx.fillStyle='#202832';ctx.beginPath();ctx.ellipse(6,-23,1.8,2.2,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#a27056';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(9,-20);ctx.lineTo(12,-17);ctx.lineTo(8,-16);ctx.moveTo(4,-11);ctx.quadraticCurveTo(8,-9,11,-12);ctx.stroke();
+  limb(0);limb(1);
+  if(highlight){ctx.strokeStyle='#d4f77988';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,21,29,61,0,0,Math.PI*2);ctx.stroke();}
+  ctx.restore();
 }
 function drawFighters(now) {
   const colors=['#6ab6e6','#ec8f79'];
@@ -174,6 +211,13 @@ function drawFighters(now) {
   const event=animation?.event;
   const bottom=match.top===null?1:1-match.top;
   const order=event?.id==='submit'?[1-event.actor,event.actor]:[bottom,1-bottom];
+  ctx.save();
+  poses.forEach(p=>{
+    const ground=match.position==='standing'?286:292;
+    const shadow=ctx.createRadialGradient(p.x,ground,2,p.x,ground,65);
+    shadow.addColorStop(0,'#112a2e55');shadow.addColorStop(1,'#112a2e00');ctx.fillStyle=shadow;
+    ctx.beginPath();ctx.ellipse(p.x,ground,65,15,0,0,Math.PI*2);ctx.fill();
+  });ctx.restore();
   order.forEach(i=>figure(poses[i],colors[i],Boolean(event&&event.actor===i&&event.success&&event.id==='submit')));
   // Contact cue around the controlled arm/neck, plus a tap-out on success.
   if(event?.id==='submit'&&progress>.28){

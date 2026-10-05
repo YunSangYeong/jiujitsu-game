@@ -115,6 +115,23 @@ await page.emulateMedia({reducedMotion:'reduce'});
 await page.evaluate(()=>{startRound(0);match.random=()=>0;match.aiClock=9999;});
 await page.locator('[data-action=takedown]').click();
 assert.equal(await page.evaluate(()=>reducedMotion.matches),true);await page.waitForTimeout(100);
+// A denied/pending audio activation must never swallow the mobile mute toggle.
+await mobile.setViewportSize({width:320,height:844});
+await mobile.evaluate(()=>{
+  sound.stop();window.savedUnlock=sound.unlock;sound.unlock=()=>Promise.resolve();
+  Object.defineProperty(sound.context,'state',{value:'suspended',configurable:true});
+  sound.enabled=true;updateSoundButton();
+});
+const toggleWidth=(await mobile.locator('#sound-toggle').boundingBox()).width;
+for(let i=0;i<4;i++){
+  await mobile.locator('#sound-toggle').tap();
+  assert.equal(await mobile.evaluate(()=>sound.enabled),i%2===1,'each tap must invert the setting even without audio permission');
+  assert.equal((await mobile.locator('#sound-toggle').boundingBox()).width,toggleWidth,'button target must not shift');
+}
+await mobile.evaluate(()=>{delete sound.context.state;sound.unlock=window.savedUnlock;delete window.savedUnlock;});
+await mobile.locator('#sound-test').tap();await mobile.waitForFunction(()=>sound.context.state==='running');
+await mobile.setViewportSize({width:390,height:844});
+await mobile.screenshot({path:'/tmp/jiujitsu-depth-mobile.png',fullPage:true});
 // Offline render verifies every effect produces audible samples, without speakers in CI.
 const audioResults=await page.evaluate(async()=>{
   const out=[];
