@@ -6,7 +6,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const server = http.createServer((req,res)=>{
   const files = {'/':'index.html','/index.html':'index.html','/style.css':'style.css','/engine.js':'engine.js','/game.js':'game.js','/graphics.js':'graphics.js','/audio.js':'audio.js'};
-  const file = files[req.url];
+  const file = files[req.url.split('?')[0]];
   if(!file){res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type', file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css':'text/javascript');
   res.end(fs.readFileSync(path.join(root,file)));
@@ -69,6 +69,11 @@ mobile.on('pageerror',e=>errors.push(e.message));
 await mobile.goto(base);
 await mobile.getByRole('button',{name:'START'}).tap();
 await mobile.waitForFunction(()=>sound.context?.state==='running');
+await mobile.locator('#sound-toggle').tap();
+assert.equal(await mobile.evaluate(()=>sound.enabled),false);
+await mobile.locator('#sound-test').tap();
+await mobile.waitForFunction(()=>sound.enabled&&sound.context?.state==='running');
+assert.equal(await mobile.locator('#sound-toggle').textContent(),'소리 켜짐');
 await mobile.evaluate(()=>{match.random=()=>0;match.aiClock=9999;});
 await mobile.locator('[data-action=takedown]').tap();assert.equal(await mobile.evaluate(()=>match.position),'guard');
 await mobile.waitForTimeout(1050);await mobile.locator('[data-action=pass]').tap();assert.equal(await mobile.evaluate(()=>match.position),'side');

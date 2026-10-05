@@ -69,14 +69,28 @@ $('primary').addEventListener('click', () => { if (phase === 'playing' && paused
 function updateSoundButton(){
   const button=$('sound-toggle');
   button.disabled=!sound.supported;
-  button.textContent=!sound.supported?'소리 미지원':sound.enabled?'소리 켜짐':'소리 꺼짐';
+  const ready=sound.context?.state==='running';
+  button.textContent=!sound.supported?'소리 미지원':!sound.enabled?'소리 꺼짐':sound.lastError?'소리 재시도':ready?'소리 켜짐':'소리 시작';
+  $('sound-test').disabled=!sound.supported;
   button.setAttribute('aria-pressed',String(sound.enabled&&sound.supported));
   button.setAttribute('aria-label',sound.enabled?'효과음 켜짐. 눌러 끄기':'효과음 꺼짐. 눌러 켜기');
 }
 $('sound-toggle').addEventListener('click',()=>{
-  sound.setEnabled(!sound.enabled);updateSoundButton();
+  const retry=sound.enabled&&(!sound.context||sound.context.state!=='running'||sound.lastError);
+  sound.setEnabled(retry?true:!sound.enabled);updateSoundButton();
   if(sound.enabled)sound.unlock().then(()=>{updateSoundButton();sound.play('recover');});
 });
+$('sound-test').addEventListener('click',()=>{
+  sound.setEnabled(true);
+  sound.unlock().then(()=>{
+    updateSoundButton();sound.play('bell',true);
+    $('message').textContent=sound.context?.state==='running'?
+      '테스트 종소리를 재생했습니다. 안 들리면 미디어 볼륨·무음 설정을 확인해주세요.':
+      '소리가 아직 활성화되지 않았습니다. 소리 테스트를 다시 누르거나 기본 브라우저에서 열어주세요.';
+  });
+});
+// Unlock within a real touch release, before click handlers or deferred callbacks.
+document.addEventListener('pointerup',()=>{if(sound.enabled)sound.unlock().then(updateSoundButton);},{capture:true});
 updateSoundButton();
 $('pause').addEventListener('click', () => togglePause());
 $('help-toggle').addEventListener('click', () => {

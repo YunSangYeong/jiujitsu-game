@@ -4,22 +4,29 @@
   class Sound {
     constructor(){
       this.context=null;this.master=null;this.voices=new Set();this.paused=false;
+      this.lastError=null;
       this.supported=Boolean(root.AudioContext||root.webkitAudioContext);this.enabled=true;
       try{this.enabled=root.localStorage.getItem('donggulbari-sound')!=='off';}catch(_){/* Private mode may block storage. */}
     }
     unlock(){
       if(!this.supported||!this.enabled)return Promise.resolve();
       try{
-        if(!this.context){
+        if(!this.context || this.context.state==='closed'){
           const Context=root.AudioContext||root.webkitAudioContext;this.context=new Context();
-          this.master=this.context.createGain();this.master.gain.value=.24;
+          this.master=this.context.createGain();this.master.gain.value=.4;
           const limiter=this.context.createDynamicsCompressor();
           limiter.threshold.value=-15;limiter.knee.value=12;limiter.ratio.value=8;
           this.master.connect(limiter);limiter.connect(this.context.destination);
         }
-        // Called directly from touch/click/keyboard, including iOS Safari.
-        if(this.context.state==='suspended')return this.context.resume().catch(()=>{});
-      }catch(_){this.supported=false;this.stop();}
+        // Prime the hardware synchronously during the gesture (older iOS WebKit).
+        const primer=this.context.createBufferSource();
+        primer.buffer=this.context.createBuffer(1,1,this.context.sampleRate);
+        primer.connect(this.master);primer.onended=()=>primer.disconnect();primer.start(0);
+        try{if(root.navigator?.audioSession)root.navigator.audioSession.type='playback';}catch(_){}
+        this.lastError=null;
+        // Safari can report 'interrupted' after an app switch or phone call.
+        if(this.context.state!=='running')return this.context.resume().catch(error=>{this.lastError=error.name;});
+      }catch(error){this.lastError=error.name;this.stop();}
       return Promise.resolve();
     }
     setEnabled(enabled){
@@ -49,8 +56,8 @@
     track(source,...nodes){
       this.voices.add(source);source.onended=()=>{this.voices.delete(source);source.disconnect();nodes.forEach(n=>n.disconnect());};
     }
-    play(name){
-      if(!this.enabled||!this.supported||this.paused||!this.context||this.context.state!=='running')return;
+    play(name,preview=false){
+      if(!this.enabled||!this.supported||(this.paused&&!preview)||!this.context||this.context.state!=='running')return;
       switch(name){
         case 'bell': this.tone(880,.5,0,'sine',.4);this.tone(1320,.55,0,'sine',.16);break;
         case 'move': this.noise(.18,0,.16,1300);break;
