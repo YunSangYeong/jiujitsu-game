@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const server = http.createServer((req,res)=>{
-  const files = {'/':'index.html','/index.html':'index.html','/style.css':'style.css','/engine.js':'engine.js','/game.js':'game.js','/graphics.js':'graphics.js'};
+  const files = {'/':'index.html','/index.html':'index.html','/style.css':'style.css','/engine.js':'engine.js','/game.js':'game.js','/graphics.js':'graphics.js','/audio.js':'audio.js'};
   const file = files[req.url];
   if(!file){res.writeHead(404);res.end();return;}
   res.setHeader('Content-Type', file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.css')?'text/css':'text/javascript');
@@ -21,12 +21,19 @@ const page=await browser.newPage({viewport:{width:1280,height:1000}});
 page.on('pageerror',e=>errors.push(e.message));
 await page.goto(base);
 await page.screenshot({path:'/tmp/jiujitsu-desktop.png',fullPage:true});
+assert.equal(await page.evaluate(()=>sound.context),null,'no autoplay before interaction');
 await page.getByRole('button',{name:'START'}).click();
+await page.waitForFunction(()=>sound.context?.state==='running');
+assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'),'true');
+await page.locator('#sound-toggle').click();assert.equal(await page.evaluate(()=>sound.enabled),false);
+assert.equal(await page.evaluate(()=>sound.voices.size),0);
+await page.locator('#sound-toggle').click();assert.equal(await page.evaluate(()=>sound.enabled),true);
 assert.equal(await page.locator('[data-action=submit]').isDisabled(),true);
 await page.keyboard.press('p');
 const pausedTime=await page.evaluate(()=>match.time);
 await page.waitForTimeout(300);
 assert.equal(await page.evaluate(()=>match.time),pausedTime);
+assert.equal(await page.evaluate(()=>sound.voices.size),0,'pause stops scheduled effects');
 await page.getByRole('button',{name:'경기 계속하기'}).click();
 // Controlled RNG/AI clock exercises actual UI tournament transitions reliably.
 for(let round=0;round<3;round++){
@@ -61,6 +68,7 @@ const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:tru
 mobile.on('pageerror',e=>errors.push(e.message));
 await mobile.goto(base);
 await mobile.getByRole('button',{name:'START'}).tap();
+await mobile.waitForFunction(()=>sound.context?.state==='running');
 await mobile.evaluate(()=>{match.random=()=>0;match.aiClock=9999;});
 await mobile.locator('[data-action=takedown]').tap();assert.equal(await mobile.evaluate(()=>match.position),'guard');
 await mobile.waitForTimeout(1050);await mobile.locator('[data-action=pass]').tap();assert.equal(await mobile.evaluate(()=>match.position),'side');
@@ -102,7 +110,25 @@ await page.emulateMedia({reducedMotion:'reduce'});
 await page.evaluate(()=>{startRound(0);match.random=()=>0;match.aiClock=9999;});
 await page.locator('[data-action=takedown]').click();
 assert.equal(await page.evaluate(()=>reducedMotion.matches),true);await page.waitForTimeout(100);
+// Offline render verifies every effect produces audible samples, without speakers in CI.
+const audioResults=await page.evaluate(async()=>{
+  const out=[];
+  for(const name of ['bell','move','mat','position','block','recover','lock','tap','win','champion','loss','draw']){
+    const fx=new JiuJitsuSound();fx.enabled=true;fx.context=new OfflineAudioContext(1,96000,48000);
+    fx.master=fx.context.createGain();fx.master.gain.value=.24;fx.master.connect(fx.context.destination);
+    // Offline context starts suspended; temporarily allow recipe scheduling only.
+    Object.defineProperty(fx.context,'state',{value:'running'});fx.play(name);
+    const buffer=await fx.context.startRendering();const data=buffer.getChannelData(0);
+    let peak=0,energy=0;for(const v of data){peak=Math.max(peak,Math.abs(v));energy+=v*v;}
+    out.push({name,peak,energy});
+  }
+  return out;
+});
+for(const {name,peak,energy}of audioResults){assert.ok(energy>0,`${name} should produce sound`);assert.ok(peak<1,`${name} should not clip`);}
+await page.locator('#sound-toggle').click();
+await page.reload();assert.equal(await page.evaluate(()=>sound.enabled),false,'mute persists');
+assert.equal(await page.evaluate(()=>sound.context),null,'muted reload does not create audio context');
 assert.deepEqual(errors,[]);
-console.log('PASS: desktop tournament, armbar/choke, trophy, restart, loss, draw, pause, help, keyboard, mobile taps, 320–1280px layout; all technique success/defense/AI animations, paused tap-out, mobile choke and reduced motion; no browser errors.');
+console.log('PASS: desktop tournament, armbar/choke, trophy, restart, loss, draw, pause, help, keyboard, mobile taps, 320–1280px layout; all technique success/defense/AI animations, paused tap-out, mobile choke and reduced motion; desktop/mobile audio unlock, mute persistence, pause silence, 12 non-silent sound recipes; no browser errors.');
 } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(e=>{console.error(e);server.close();process.exit(1);});

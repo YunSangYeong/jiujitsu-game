@@ -3,6 +3,7 @@ const { Match, ACTIONS, OPPONENTS, POSITIONS } = JiuJitsu;
 const $ = id => document.getElementById(id);
 const canvas = $('mat'), ctx = canvas.getContext('2d');
 let match = new Match(), phase = 'intro', paused = false, lastFrame = 0, animation = null, seenAction = 0;
+const sound = new JiuJitsuSound();
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const buttons = ACTIONS.map((action, index) => {
   const button = document.createElement('button');
@@ -12,9 +13,11 @@ const buttons = ACTIONS.map((action, index) => {
 });
 function play(id) {
   if (phase !== 'playing' || paused) return;
+  sound.unlock().then(updateSoundButton);
   if (match.act(0, id)) { observeAction(); render(); finishIfNeeded(); }
 }
 function startRound(round) {
+  sound.stop(); sound.setPaused(false); sound.unlock().then(()=>{updateSoundButton();sound.play('bell');});
   animation = null; seenAction = 0;
   match = new Match(round); phase = 'playing'; paused = false; lastFrame = performance.now();
   $('overlay').hidden = true; match.say(`${OPPONENTS[round].name} 등장! ${OPPONENTS[round].style}`);
@@ -30,6 +33,7 @@ function finishIfNeeded() {
   if (!match.result || phase !== 'playing') return;
   if (match.result.method === 'submission' && animation && animation.elapsed < animation.duration) return;
   phase = 'result'; paused = false;
+  sound.play(match.result.winner === null ? 'draw' : match.result.winner === 0 ? (match.round === 2 ? 'champion' : 'win') : 'loss');
   const { winner, method, technique } = match.result;
   const score = `${match.fighters[0].score} : ${match.fighters[1].score}`;
   if (winner === 0 && match.round === 2) {
@@ -55,11 +59,25 @@ function togglePause(force) {
   if (phase !== 'playing') return;
   paused = typeof force === 'boolean' ? force : !paused;
   lastFrame = performance.now();
+  sound.setPaused(paused);
+  if(!paused)sound.unlock().then(updateSoundButton);
   if (paused) showOverlay('TIME OUT', '잠깐, 숨 고르기.', '경기 시간과 AI 행동이 멈췄습니다.', '경기 계속하기', 'P 키 또는 버튼으로 재개');
   else $('overlay').hidden = true;
   render();
 }
 $('primary').addEventListener('click', () => { if (phase === 'playing' && paused) togglePause(false); });
+function updateSoundButton(){
+  const button=$('sound-toggle');
+  button.disabled=!sound.supported;
+  button.textContent=!sound.supported?'소리 미지원':sound.enabled?'소리 켜짐':'소리 꺼짐';
+  button.setAttribute('aria-pressed',String(sound.enabled&&sound.supported));
+  button.setAttribute('aria-label',sound.enabled?'효과음 켜짐. 눌러 끄기':'효과음 꺼짐. 눌러 켜기');
+}
+$('sound-toggle').addEventListener('click',()=>{
+  sound.setEnabled(!sound.enabled);updateSoundButton();
+  if(sound.enabled)sound.unlock().then(()=>{updateSoundButton();sound.play('recover');});
+});
+updateSoundButton();
 $('pause').addEventListener('click', () => togglePause());
 $('help-toggle').addEventListener('click', () => {
   $('help').hidden = !$('help').hidden; $('help-toggle').setAttribute('aria-expanded', String(!$('help').hidden));
@@ -111,7 +129,8 @@ function observeAction() {
   seenAction = event.serial;
   const frames = JiuJitsuGraphics.keyframes(event);
   if (animation) frames.start = JiuJitsuGraphics.sample(animation.frames, Math.min(1, animation.elapsed / animation.duration));
-  animation = { event, frames, elapsed: 0, duration: event.id === 'submit' ? 1.25 : .82 };
+  sound.play(event.id === 'defend' ? 'recover' : event.id === 'submit' ? 'lock' : 'move');
+  animation = { event, frames, elapsed: 0, impactPlayed: false, duration: event.id === 'submit' ? 1.25 : .82 };
 }
 function figure(pose, color, highlight = false) {
   const { x,y,angle,facing,limbs } = pose;
@@ -198,10 +217,35 @@ function draw(now) {
   drawFighters(now);
   ctx.fillStyle='#dfede3';ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('BLUE · 동굴바리',26,351);ctx.textAlign='right';ctx.fillText('CORAL · '+match.fighters[1].name,934,351);
 }
+function advanceAnimation(seconds) {
+  if (!animation) return;
+  animation.elapsed += seconds;
+  const event = animation.event;
+  const impactAt = animation.duration * (event.id === 'submit' ? .62 : .48);
+  if (!animation.impactPlayed && animation.elapsed >= impactAt) {
+    animation.impactPlayed = true;
+    if (event.id !== 'defend') {
+      const effect = !event.success ? 'block' : event.id === 'submit' ? 'tap' :
+        ['takedown', 'sweep'].includes(event.id) ? 'mat' : 'position';
+      sound.play(effect);
+    }
+  }
+  if (animation.elapsed >= animation.duration && !match.result) animation = null;
+}
 let renderElapsed = 0;
 function frame(now) {
-  const elapsed = Math.min((now - (lastFrame || now))/1000,.1); lastFrame=now;
-  if(phase==='playing'&&!paused){match.tick(elapsed);observeAction();if(animation){animation.elapsed+=elapsed;if(animation.elapsed>=animation.duration&&!match.result)animation=null;}renderElapsed+=elapsed;if(renderElapsed>.1){render();renderElapsed=0;}finishIfNeeded();}
-  draw(now);requestAnimationFrame(frame);
+  const elapsed = Math.min((now - (lastFrame || now)) / 1000, .1);
+  lastFrame = now;
+  if (phase === 'playing' && !paused) {
+    match.tick(elapsed);
+    observeAction();
+    advanceAnimation(elapsed);
+    renderElapsed += elapsed;
+    if (renderElapsed > .1) { render(); renderElapsed = 0; }
+    finishIfNeeded();
+  }
+  draw(now);
+  requestAnimationFrame(frame);
 }
-render();requestAnimationFrame(frame);
+render();
+requestAnimationFrame(frame);
