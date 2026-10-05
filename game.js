@@ -2,7 +2,8 @@
 const { Match, ACTIONS, OPPONENTS, POSITIONS } = JiuJitsu;
 const $ = id => document.getElementById(id);
 const canvas = $('mat'), ctx = canvas.getContext('2d');
-let match = new Match(), phase = 'intro', paused = false, lastFrame = 0, motion = 0;
+let match = new Match(), phase = 'intro', paused = false, lastFrame = 0, animation = null, seenAction = 0;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const buttons = ACTIONS.map((action, index) => {
   const button = document.createElement('button');
   button.className = 'action'; button.dataset.action = action.id;
@@ -11,9 +12,10 @@ const buttons = ACTIONS.map((action, index) => {
 });
 function play(id) {
   if (phase !== 'playing' || paused) return;
-  if (match.act(0, id)) { motion = 1; render(); finishIfNeeded(); }
+  if (match.act(0, id)) { observeAction(); render(); finishIfNeeded(); }
 }
 function startRound(round) {
+  animation = null; seenAction = 0;
   match = new Match(round); phase = 'playing'; paused = false; lastFrame = performance.now();
   $('overlay').hidden = true; match.say(`${OPPONENTS[round].name} 등장! ${OPPONENTS[round].style}`);
   render();
@@ -26,6 +28,7 @@ function showOverlay(kicker, title, copy, button, note, trophy = false) {
 }
 function finishIfNeeded() {
   if (!match.result || phase !== 'playing') return;
+  if (match.result.method === 'submission' && animation && animation.elapsed < animation.duration) return;
   phase = 'result'; paused = false;
   const { winner, method, technique } = match.result;
   const score = `${match.fighters[0].score} : ${match.fighters[1].score}`;
@@ -101,21 +104,78 @@ function render() {
     }));
   }
 }
-// Stylized gi figures. Local joints make each ground position visually distinct.
-function figure(x, y, angle, color, pose, facing = 1) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.scale(facing, 1);
-  const joints = pose === 'stand' ? [[-25,25,-37,60],[25,25,37,50],[-13,65,-24,100],[13,65,28,100]] :
-    pose === 'guard' ? [[-25,10,-38,-10],[25,10,35,-14],[-24,65,-44,30],[24,65,44,30]] :
-    pose === 'kneel' ? [[-29,30,-37,49],[29,30,40,48],[-27,57,-35,79],[27,57,43,77]] :
-    [[-32,14,-46,36],[32,14,46,36],[-16,68,-35,82],[16,68,35,82]];
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  joints.forEach(([a,b,c,d],i) => { ctx.strokeStyle=color; ctx.lineWidth=15; ctx.beginPath(); ctx.moveTo(i<2 ? (i===0?-16:16) : (i===2?-10:10), i<2?9:48); ctx.lineTo(a,b); ctx.lineTo(c,d); ctx.stroke(); ctx.fillStyle=i<2?'#e5b18f':'#c89478'; ctx.beginPath();ctx.arc(c,d,7,0,Math.PI*2);ctx.fill(); });
-  ctx.fillStyle = color; ctx.beginPath();ctx.roundRect(-22,0,44,55,8);ctx.fill();
-  ctx.strokeStyle='#edf5e7';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-13,2);ctx.lineTo(5,33);ctx.moveTo(13,2);ctx.lineTo(-5,33);ctx.stroke();
+// Action events originate in the rule engine, so AI and player share all visual effects.
+function observeAction() {
+  const event = match.lastAction;
+  if (!event || event.serial === seenAction) return;
+  seenAction = event.serial;
+  const frames = JiuJitsuGraphics.keyframes(event);
+  if (animation) frames.start = JiuJitsuGraphics.sample(animation.frames, Math.min(1, animation.elapsed / animation.duration));
+  animation = { event, frames, elapsed: 0, duration: event.id === 'submit' ? 1.25 : .82 };
+}
+function figure(pose, color, highlight = false) {
+  const { x,y,angle,facing,limbs } = pose;
+  ctx.save(); ctx.translate(x,y);ctx.rotate(angle);ctx.scale(facing,1);
+  ctx.lineCap='round';ctx.lineJoin='round';
+  if(highlight){ctx.shadowColor='#d4f779';ctx.shadowBlur=6;}
+  // Legs behind gi torso, arms in front, to make grips and submissions readable.
+  function limb(i) {
+    const [a,b,c,d]=limbs[i];
+    ctx.strokeStyle='#182a32';ctx.lineWidth=19;ctx.beginPath();ctx.moveTo(i<2?(i===0?-17:17):(i===2?-11:11),i<2?8:49);ctx.lineTo(a,b);ctx.lineTo(c,d);ctx.stroke();
+    ctx.strokeStyle=color;ctx.lineWidth=13;ctx.stroke();
+    ctx.fillStyle='#e5b18f';ctx.beginPath();ctx.arc(c,d,6,0,Math.PI*2);ctx.fill();
+  }
+  limb(2);limb(3);
+  ctx.fillStyle=color;ctx.strokeStyle='#182a32';ctx.lineWidth=2;ctx.beginPath();ctx.roundRect(-22,0,44,55,7);ctx.fill();ctx.stroke();
+  ctx.strokeStyle='#ecf3ef';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-13,1);ctx.lineTo(6,32);ctx.moveTo(13,1);ctx.lineTo(-6,32);ctx.stroke();
   ctx.fillStyle='#17232b';ctx.fillRect(-23,39,46,7);ctx.fillRect(8,42,6,19);
-  ctx.fillStyle='#e5b18f';ctx.beginPath();ctx.arc(0,-20,18,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#182329';ctx.beginPath();ctx.arc(0,-25,17,Math.PI,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#162128';ctx.fillRect(5,-21,3,3);ctx.restore();
+  ctx.fillStyle='#e5b18f';ctx.strokeStyle='#182a32';ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,-21,18,0,Math.PI*2);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#182329';ctx.beginPath();ctx.arc(0,-26,17,Math.PI,Math.PI*2);ctx.fill();ctx.fillRect(5,-22,3,3);
+  limb(0);limb(1);ctx.restore();
+}
+function drawFighters(now) {
+  const colors=['#6ab6e6','#ec8f79'];
+  const progress=animation?Math.min(1,animation.elapsed/animation.duration):1;
+  let poses=JiuJitsuGraphics.positions(match);
+  if(animation) poses=reducedMotion.matches?animation.frames.end:JiuJitsuGraphics.sample(animation.frames,progress);
+  const event=animation?.event;
+  const bottom=match.top===null?1:1-match.top;
+  const order=event?.id==='submit'?[1-event.actor,event.actor]:[bottom,1-bottom];
+  order.forEach(i=>figure(poses[i],colors[i],Boolean(event&&event.actor===i&&event.success&&event.id==='submit')));
+  // Contact cue around the controlled arm/neck, plus a tap-out on success.
+  if(event?.id==='submit'&&progress>.28){
+    ctx.save();ctx.strokeStyle=event.success?'#d4f779':'#ecf3ef';ctx.lineWidth=3;
+    const x=event.technique==='암바'?504:480,y=event.technique==='암바'?240:210;
+    ctx.beginPath();ctx.arc(x,y,16+(reducedMotion.matches?0:Math.sin(progress*15)*3),0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#d4f779';ctx.font='bold 16px sans-serif';ctx.textAlign='center';
+    ctx.fillText(event.technique==='암바'?'팔 제어':'목 제어',x,y-28);
+    if(event.success&&progress>.6){ctx.font='bold 20px sans-serif';ctx.fillText('TAP! TAP!',590,258);}
+    ctx.restore();
+  }
+  // Technique-specific motion trails: arc for sweep, horizontal pass, downward takedown.
+  if(event&&progress<.8&&!reducedMotion.matches&&['takedown','pass','sweep','escape'].includes(event.id)){
+    ctx.save();ctx.strokeStyle=colors[event.actor]+'aa';ctx.lineWidth=3;ctx.setLineDash([7,8]);
+    ctx.beginPath();
+    if(event.id==='sweep')ctx.arc(480,248,88,Math.PI*1.1,Math.PI*2.6);
+    else if(event.id==='takedown'){ctx.moveTo(580,157);ctx.quadraticCurveTo(620,197,586,280);}
+    else{ctx.moveTo(380,288);ctx.quadraticCurveTo(460,315,560,285);}
+    ctx.stroke();ctx.restore();
+  }
+  if(animation){
+    const label=event.id==='defend'?'방어 · 회복 +18':event.technique+(event.success?' 성공!':' · 상대 방어!');
+    ctx.save();ctx.font='bold 20px sans-serif';ctx.textAlign='center';
+    const width=ctx.measureText(label).width+46;
+    ctx.fillStyle='#101e26ee';ctx.beginPath();ctx.roundRect(480-width/2,101,width,38,19);ctx.fill();
+    ctx.fillStyle=event.success?'#d4f779':'#f3b29d';ctx.fillText(label,480,127);ctx.restore();
+  }
+  // Persistent defense shield lets players see whether the next attack is protected.
+  match.fighters.forEach((fighter,i)=>{
+    if(!fighter.defending)return;
+    const p=poses[i];ctx.save();ctx.strokeStyle='#d4f779';ctx.lineWidth=3;
+    ctx.beginPath();ctx.ellipse(p.x,p.y+20,62,75,0,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle='#d4f779';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText('방어',p.x,p.y-66);ctx.restore();
+  });
+  canvas.setAttribute('aria-label',animation?`${match.fighters[event.actor].name} ${event.technique} ${event.success?'성공':'방어됨'}`:`현재 포지션: ${POSITIONS[match.position]}`);
 }
 function draw(now) {
   const ratio = window.devicePixelRatio || 1;
@@ -135,24 +195,13 @@ function draw(now) {
   ctx.strokeStyle='#c9ddb37a';ctx.lineWidth=3;ctx.strokeRect(225,159,510,171);
   ctx.fillStyle='#cee0ce18';ctx.font='bold 25px sans-serif';ctx.textAlign='center';ctx.fillText('DONGGUL DOJO',480,307);
   ctx.fillStyle='#101e2640';ctx.beginPath();ctx.ellipse(480,278,155,25,0,0,Math.PI*2);ctx.fill();
-  const bounce = phase === 'playing' && !paused ? Math.sin(now/280)*2 : 0;
-  const impact = motion * Math.sin(now/35)*4;
-  const colors=['#6ab6e6','#ec8f79'];
-  if(match.position==='standing') {
-    figure(375+impact,173+bounce,.1,colors[0],'stand',1);figure(585-impact,173-bounce,-.1,colors[1],'stand',-1);
-  } else {
-    const top = match.top, bottom = 1-top;
-    if(match.position==='guard') {figure(460,253,Math.PI/2,colors[bottom],'guard');figure(514+impact,191+bounce,-.35,colors[top],'kneel',-1);}
-    if(match.position==='side') {figure(440,242,Math.PI/2,colors[bottom],'ground');figure(483+impact,195+bounce,.2,colors[top],'kneel');}
-    if(match.position==='mount') {figure(480,260,Math.PI/2,colors[bottom],'ground');figure(470+impact,195+bounce,0,colors[top],'kneel');}
-    if(match.position==='back') {figure(500,200,-.4,colors[top],'guard',-1);figure(460+impact,215,-.4,colors[bottom],'kneel',-1);}
-  }
+  drawFighters(now);
   ctx.fillStyle='#dfede3';ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('BLUE · 동굴바리',26,351);ctx.textAlign='right';ctx.fillText('CORAL · '+match.fighters[1].name,934,351);
 }
 let renderElapsed = 0;
 function frame(now) {
   const elapsed = Math.min((now - (lastFrame || now))/1000,.1); lastFrame=now;
-  if(phase==='playing'&&!paused){match.tick(elapsed);motion=Math.max(0,motion-elapsed*3);renderElapsed+=elapsed;if(renderElapsed>.1){render();renderElapsed=0;}finishIfNeeded();}
+  if(phase==='playing'&&!paused){match.tick(elapsed);observeAction();if(animation){animation.elapsed+=elapsed;if(animation.elapsed>=animation.duration&&!match.result)animation=null;}renderElapsed+=elapsed;if(renderElapsed>.1){render();renderElapsed=0;}finishIfNeeded();}
   draw(now);requestAnimationFrame(frame);
 }
 render();requestAnimationFrame(frame);
