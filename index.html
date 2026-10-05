@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121f25">
+  <title>동굴바리 주짓수 토너먼트</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="engine.js"></script>
+  <script defer src="game.js"></script>
+</head>
+<body>
+<main class="game-shell">
+  <header class="brand"><div class="brand-mark" aria-hidden="true">洞</div><div><p class="eyebrow">DONGGULBARI · PROTOTYPE v1.0</p><h1>동굴바리 주짓수 토너먼트</h1></div><button id="help-toggle" class="icon-button" aria-expanded="false" aria-controls="help">도움말</button></header>
+  <section id="help" class="help" hidden><strong>포지션을 만들고, 타이밍을 잡으세요.</strong><p>테이크다운 → 가드 패스 → 사이드 → 마운트 / 백 → 서브미션. 아래에 깔렸다면 스윕 또는 탈출! 방어는 스태미나를 회복하고 상대의 다음 공격을 막습니다.</p><p>키보드 1~8: 기술 · P: 일시정지 · Enter: 시작 / 다음 경기. 테이크다운·스윕 2점, 패스 3점, 마운트·백 4점. 75초 후 높은 점수로 승리하며 동점이면 재경기합니다.</p></section>
+  <nav class="rounds" aria-label="토너먼트 진행"><span data-round="0">01 <b>예선</b></span><span data-round="1">02 <b>준결승</b></span><span data-round="2">03 <b>결승</b></span></nav>
+  <section class="scoreboard" aria-label="경기 현황">
+    <div class="fighter-info player"><p><span class="dot"></span> 동굴바리 <span class="role">YOU</span></p><div class="score-line"><strong id="player-score">0</strong><span>POINTS</span></div><div class="stamina-label"><label for="player-stamina">스태미나</label><span id="player-energy">100</span></div><progress id="player-stamina" max="100" value="100">100</progress></div>
+    <div class="clock"><span>남은 시간</span><strong id="time">01:15</strong><button id="pause" class="small-button" disabled>일시정지</button></div>
+    <div class="fighter-info opponent"><p><span class="dot"></span> <span id="opponent-name">돌주먹 민수</span> <span class="role">AI</span></p><div class="score-line"><strong id="ai-score">0</strong><span>POINTS</span></div><div class="stamina-label"><label for="ai-stamina">스태미나</label><span id="ai-energy">100</span></div><progress id="ai-stamina" max="100" value="100">100</progress></div>
+  </section>
+  <section class="arena" aria-label="주짓수 경기장">
+    <div class="arena-top"><span>동굴 도장 · TOURNAMENT MAT 01</span><span class="live" id="live-label">READY</span></div>
+    <canvas id="mat" width="960" height="390" aria-label="동굴바리와 상대의 현재 포지션을 보여주는 2D 경기장"></canvas>
+    <div class="position-tag"><span>현재 포지션</span><strong id="position">스탠딩</strong><span id="position-hint">테이크다운으로 경기를 시작하세요</span></div>
+    <div id="overlay" class="overlay"><div class="overlay-card"><p id="overlay-kicker" class="eyebrow">THE ROAD TO CHAMPION</p><div id="trophy" hidden aria-hidden="true">🏆</div><h2 id="overlay-title">작은 도장, 큰 도전.</h2><p id="overlay-copy">예선부터 결승까지 AI 선수들을 꺾고<br>주짓수 챔피언이 되어라!</p><button id="primary" class="primary">START <span>→</span></button><p id="overlay-note">설치 없이 바로 플레이 · 키보드 & 터치</p></div></div>
+  </section>
+  <section class="controls" aria-label="기술 선택"><div class="controls-heading"><h2>다음 한 수</h2><span id="action-hint">포지션에 맞는 기술을 선택하세요</span></div><div id="actions" class="actions"></div></section>
+  <section class="commentary"><div><span class="live-dot"></span><h2>경기 중계</h2></div><p id="message" role="status" aria-live="polite">매트가 준비됐습니다. 동굴바리의 도전을 시작하세요!</p><ol id="log" aria-label="최근 경기 기록"></ol></section>
+  <footer><span>동굴바리 주짓수 토너먼트</span><span>2D CASUAL JIU-JITSU · v1.0</span></footer>
+</main>
+</body>
+</html>
